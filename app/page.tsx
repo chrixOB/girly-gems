@@ -150,9 +150,19 @@ export default function Home() {
       </header>
 
       <section className="hero" id="top">
+        <svg className="hero-filter-defs" aria-hidden="true" focusable="false">
+          <filter id="hero-water-ripple" x="-12%" y="-18%" width="124%" height="136%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.018 0.035" numOctaves="1" seed="4" result="waterNoise">
+              <animate attributeName="baseFrequency" values="0.018 0.035;0.045 0.08;0.018 0.035" dur="1.25s" fill="freeze" />
+            </feTurbulence>
+            <feDisplacementMap in="SourceGraphic" in2="waterNoise" scale="11" xChannelSelector="R" yChannelSelector="G">
+              <animate attributeName="scale" values="11;4;0" keyTimes="0;.38;1" dur="1.25s" fill="freeze" />
+            </feDisplacementMap>
+          </filter>
+        </svg>
         <div className="hero-copy">
           <p className="eyebrow">Small treasures, big energy <span>✦</span></p>
-          <h1>Jewelry for your <em>main character</em> era.</h1>
+          <h1 className="hero-title">Jewelry for your <em className="hero-title-highlight">main character</em> era.</h1>
           <p className="hero-text">The finishing touch, the conversation starter, the little thing that makes an ordinary Tuesday feel special.</p>
           <a className="primary-button" href="#shop">Find your sparkle <ArrowRight size={17} /></a>
           <div className="hero-note"><div className="avatar-stack"><span>J</span><span>M</span><span>A</span></div><span>Loved by 12,000+ gem girls</span><span className="mini-stars">★★★★★</span></div>
