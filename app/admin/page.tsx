@@ -1,14 +1,46 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, LockKeyhole, Sparkles } from "lucide-react";
 
 export default function AdminLogin() {
-  const [message, setMessage] = useState("");
+  const router = useRouter();
+  const [alert, setAlert] = useState<{ type: "error" | "success" | "info"; text: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Admin sign-in is not connected yet.");
+    setAlert(null);
+    setIsSubmitting(true);
+
+    const form = new FormData(event.currentTarget);
+    const username = String(form.get("username") || "");
+    const password = String(form.get("password") || "");
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        body: JSON.stringify({ username, password }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setAlert({ type: "error", text: data.message || "Invalid username or password." });
+        setIsSubmitting(false);
+        return;
+      }
+
+      setAlert({ type: "success", text: "Login successful. Opening dashboard..." });
+      window.setTimeout(() => {
+        router.push(data.redirectTo || "/admin/dashboard");
+        router.refresh();
+      }, 200);
+    } catch {
+      setAlert({ type: "error", text: "Unable to connect to the server." });
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -37,6 +69,7 @@ export default function AdminLogin() {
         <p className="admin-login-intro">Sign in to manage your little corner of Girly Gems.</p>
 
         <form className="admin-login-form" onSubmit={handleSubmit}>
+          {alert && <div className={`admin-login-alert ${alert.type}`} role={alert.type === "error" ? "alert" : "status"} aria-live={alert.type === "error" ? "assertive" : "polite"}><span>{alert.type === "success" ? "✓" : alert.type === "error" ? "!" : "i"}</span>{alert.text}</div>}
           <label htmlFor="admin-username">Username</label>
           <input
             autoComplete="username"
@@ -48,7 +81,7 @@ export default function AdminLogin() {
 
           <div className="admin-password-label">
             <label htmlFor="admin-password">Password</label>
-            <a className="admin-forgot-link" href="#forgot-password" onClick={(event) => { event.preventDefault(); setMessage("Password recovery is not configured yet."); }}>
+            <a className="admin-forgot-link" href="#forgot-password" onClick={(event) => { event.preventDefault(); setAlert({ type: "info", text: "Password recovery is not configured yet." }); }}>
               Forgot password?
             </a>
           </div>
@@ -61,10 +94,9 @@ export default function AdminLogin() {
             type="password"
           />
 
-          <button className="admin-submit" type="submit">
-            Log in <ArrowRight size={16} />
+          <button className="admin-submit" disabled={isSubmitting} type="submit">
+            {isSubmitting ? "Logging in..." : "Log in"} <ArrowRight size={16} />
           </button>
-          <p className="admin-login-message" aria-live="polite">{message}</p>
         </form>
 
         <div className="admin-login-footnote"><Sparkles size={13} /> Made for the people behind the sparkle</div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -30,61 +30,15 @@ type Product = {
 
 const categories: Category[] = ["All pieces", "Necklaces", "Earrings", "Rings", "Bracelets"];
 
-const products: Product[] = [
-  {
-    id: 1,
-    name: "Dainty Pearl Drop",
-    category: "Earrings",
-    price: 42,
-    image: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=900&q=85",
-    tone: "blush",
-    badge: "Bestseller",
-  },
-  {
-    id: 2,
-    name: "Mariposa Pendant",
-    category: "Necklaces",
-    price: 58,
-    image: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=900&q=85",
-    tone: "butter",
-    badge: "New in",
-  },
-  {
-    id: 3,
-    name: "Golden Hour Hoops",
-    category: "Earrings",
-    price: 36,
-    image: "https://images.unsplash.com/photo-1635767798638-3e25273a8236?auto=format&fit=crop&w=900&q=85",
-    tone: "lilac",
-  },
-  {
-    id: 4,
-    name: "Petit Signet Ring",
-    category: "Rings",
-    price: 32,
-    image: "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=900&q=85",
-    tone: "sky",
-  },
-  {
-    id: 5,
-    name: "Candy Heart Chain",
-    category: "Necklaces",
-    price: 64,
-    image: "https://images.unsplash.com/photo-1611652022419-a9419f74343d?auto=format&fit=crop&w=900&q=85",
-    tone: "peach",
-  },
-  {
-    id: 6,
-    name: "Lucky Clover Cuff",
-    category: "Bracelets",
-    price: 48,
-    image: "https://images.unsplash.com/photo-1619119069152-a2b331eb392a?auto=format&fit=crop&w=900&q=85",
-    tone: "mint",
-  },
-];
+const toneByCategory: Record<Product["category"], string> = {
+  Necklaces: "butter",
+  Earrings: "blush",
+  Rings: "sky",
+  Bracelets: "mint",
+};
 
 function formatPrice(price: number) {
-  return `$${price.toFixed(2)}`;
+  return new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS", minimumFractionDigits: 2 }).format(price);
 }
 
 export default function Home() {
@@ -95,6 +49,25 @@ export default function Home() {
   const [favorites, setFavorites] = useState<number[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        const response = await fetch("/api/store/items", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        const storeItems = Array.isArray(data.items) ? data.items : [];
+        setProducts(storeItems.map((item: Product) => ({ ...item, tone: toneByCategory[item.category] })));
+      } catch {
+        setProducts([]);
+      }
+    }
+
+    loadProducts();
+    const refreshTimer = window.setInterval(loadProducts, 3000);
+    return () => window.clearInterval(refreshTimer);
+  }, []);
 
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -103,7 +76,7 @@ export default function Home() {
       const matchesSearch = !query || product.name.toLowerCase().includes(query) || product.category.toLowerCase().includes(query);
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, searchQuery]);
+  }, [activeCategory, products, searchQuery]);
 
   const cartItems = products.filter((product) => cart[product.id]);
   const cartCount = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
@@ -132,7 +105,7 @@ export default function Home() {
 
   return (
     <main className="site-shell">
-      <div className="announcement"><Sparkles size={14} /> Free shipping on orders over $75 <ArrowRight size={14} /></div>
+      <div className="announcement"><Sparkles size={14} /> Free shipping on orders over GH¢75 <ArrowRight size={14} /></div>
 
       <header className="site-header">
         <button className="icon-button menu-button" aria-label="Open menu" onClick={() => setMenuOpen(!menuOpen)}><Menu size={21} /></button>
@@ -179,7 +152,7 @@ export default function Home() {
         <div className="section-heading"><p>{filteredProducts.length} pieces to love</p><button className="sort-button">Sort by <strong>Featured</strong> <ChevronDown size={15} /></button></div>
         <div className="product-grid">
           {filteredProducts.map((product) => <article className="product-card" key={product.id}>
-            <div className={`product-image ${product.tone}`}><img src={product.image} alt={product.name} /><button className={`favorite-button ${favorites.includes(product.id) ? "is-favorite" : ""}`} aria-label={`Favorite ${product.name}`} onClick={() => toggleFavorite(product.id)}><Heart size={18} fill={favorites.includes(product.id) ? "currentColor" : "none"} /></button>{product.badge && <span className="product-badge">{product.badge}</span>}<button className="quick-add" onClick={() => addToCart(product.id)}>Add to bag <Plus size={16} /></button></div>
+            <div className={`product-image ${product.tone}`}><img src={product.image || "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=900&q=85"} alt={product.name} /><button className={`favorite-button ${favorites.includes(product.id) ? "is-favorite" : ""}`} aria-label={`Favorite ${product.name}`} onClick={() => toggleFavorite(product.id)}><Heart size={18} fill={favorites.includes(product.id) ? "currentColor" : "none"} /></button>{product.badge && <span className="product-badge">{product.badge}</span>}<button className="quick-add" onClick={() => addToCart(product.id)}>Add to bag <Plus size={16} /></button></div>
             <div className="product-info"><div><h3>{product.name}</h3><p>{product.category}</p></div><strong>{formatPrice(product.price)}</strong></div>
           </article>)}
         </div>
