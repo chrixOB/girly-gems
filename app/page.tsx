@@ -65,8 +65,24 @@ export default function Home() {
     }
 
     loadProducts();
-    const refreshTimer = window.setInterval(loadProducts, 3000);
-    return () => window.clearInterval(refreshTimer);
+    const refreshTimer = window.setInterval(loadProducts, 1500);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadProducts();
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "girly-gems-items-changed") loadProducts();
+    };
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", loadProducts);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", loadProducts);
+      window.removeEventListener("storage", handleStorage);
+    };
   }, []);
 
   const filteredProducts = useMemo(() => {

@@ -7,6 +7,9 @@ import {
   Boxes,
   ChevronDown,
   CircleHelp,
+  CircleCheck,
+  CircleAlert,
+  LoaderCircle,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -47,6 +50,8 @@ export default function DashboardClient() {
   const [productName, setProductName] = useState("");
   const [productCategory, setProductCategory] = useState<StoreItem["category"]>("Necklaces");
   const [productPrice, setProductPrice] = useState("");
+  const [operationLoading, setOperationLoading] = useState<string | null>(null);
+  const [operationAlert, setOperationAlert] = useState<{ type: "success" | "error"; title: string; message: string } | null>(null);
 
   async function loadItems() {
     const response = await fetch("/api/items", { cache: "no-store" });
@@ -68,10 +73,22 @@ export default function DashboardClient() {
   }
 
   async function removeItem(id: number) {
-    const response = await fetch(`/api/items/${id}`, { method: "DELETE" });
-    if (!response.ok) return;
-    setItems((current) => current.filter((item) => item.id !== id));
-    setNotice("Item removed.");
+    setOperationLoading(`remove-${id}`);
+    try {
+      const response = await fetch(`/api/items/${id}`, { method: "DELETE" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setOperationAlert({ type: "error", title: "Item not removed", message: data?.message || "The item could not be removed. Please try again." });
+        return;
+      }
+      setItems((current) => current.filter((item) => item.id !== id));
+      localStorage.setItem("girly-gems-items-changed", String(Date.now()));
+      setOperationAlert({ type: "success", title: "Item removed", message: "The item was removed from the catalogue." });
+    } catch {
+      setOperationAlert({ type: "error", title: "Item not removed", message: "Unable to connect to the server. Please try again." });
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   function openAddProduct() {
@@ -93,24 +110,33 @@ export default function DashboardClient() {
   async function saveProduct() {
     const price = Number(productPrice);
     if (!productName.trim() || !Number.isFinite(price) || price < 0) {
-      setNotice("Enter a product name and valid price.");
+      setOperationAlert({ type: "error", title: "Product not saved", message: "Enter a product name and a valid price." });
       return;
     }
 
-    const payload = { name: productName.trim(), category: productCategory, price, image: editingItem?.image || "" };
-    const response = productModal === "edit"
-      ? await fetch(`/api/items/${editingItem?.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-      : await fetch("/api/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    setOperationLoading(productModal === "edit" ? "edit" : "add");
+    try {
+      const payload = { name: productName.trim(), category: productCategory, price, image: editingItem?.image || "" };
+      const response = productModal === "edit"
+        ? await fetch(`/api/items/${editingItem?.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        : await fetch("/api/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await response.json().catch(() => null);
 
-    if (!response.ok) {
-      setNotice("The product could not be saved.");
-      return;
+      if (!response.ok) {
+        setOperationAlert({ type: "error", title: "Product not saved", message: data?.message || "The product could not be saved. Please try again." });
+        return;
+      }
+
+      await loadItems();
+      localStorage.setItem("girly-gems-items-changed", String(Date.now()));
+      setProductModal(null);
+      setEditingItem(null);
+      setOperationAlert({ type: "success", title: productModal === "edit" ? "Product updated" : "Product added", message: productModal === "edit" ? "Your product changes are now live." : "The new product is now live in the catalogue." });
+    } catch {
+      setOperationAlert({ type: "error", title: "Product not saved", message: "Unable to connect to the server. Please try again." });
+    } finally {
+      setOperationLoading(null);
     }
-
-    await loadItems();
-    setProductModal(null);
-    setEditingItem(null);
-    setNotice(productModal === "edit" ? "Product updated." : "Product added.");
   }
 
   const visibleItems = items.filter((item) =>
@@ -154,10 +180,11 @@ export default function DashboardClient() {
           <div className="dashboard-heading"><div><p>Admin workspace</p><h1>{activeView}</h1></div>{activeView === "Products" && <button className="dashboard-primary-button" onClick={openAddProduct}><PackagePlus size={17} /> Add product</button>}</div>
           {notice && <div className="dashboard-notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss"><X size={14} /></button></div>}
           {activeView === "Overview" && <Overview items={items} complaints={3} />}
-          {activeView === "Products" && <ProductsView items={visibleItems} loading={loading} onRemoved={removeItem} onEdit={openEditProduct} />}
+          {activeView === "Products" && <ProductsView items={visibleItems} loading={loading} operationLoading={operationLoading} onRemoved={removeItem} onEdit={openEditProduct} />}
           {activeView === "Complaints" && <ComplaintsView />}
           {activeView === "Customers" && <CustomersView />}
-          {productModal && <div className="dashboard-modal-backdrop" onMouseDown={() => setProductModal(null)}><section className="dashboard-product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title" onMouseDown={(event) => event.stopPropagation()}><div className="dashboard-modal-heading"><div><p>{productModal === "add" ? "New catalogue item" : "Edit catalogue item"}</p><h2 id="product-modal-title">{productModal === "add" ? "Add product" : "Update product"}</h2></div><button onClick={() => setProductModal(null)} aria-label="Close"><X size={18} /></button></div><label>Product name<input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="e.g. Pearl Drop Earrings" /></label><label>Category<select value={productCategory} onChange={(event) => setProductCategory(event.target.value as StoreItem["category"])}><option>Necklaces</option><option>Earrings</option><option>Rings</option><option>Bracelets</option></select></label><label>Price (GH₵)<input min="0" step="0.01" type="number" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} placeholder="0.00" /></label><div className="dashboard-modal-actions"><button className="dashboard-secondary-button" onClick={() => setProductModal(null)}>Cancel</button><button className="dashboard-primary-button" onClick={saveProduct}>{productModal === "add" ? "Add product" : "Save changes"}</button></div></section></div>}
+          {productModal && <div className="dashboard-modal-backdrop" onMouseDown={() => !operationLoading && setProductModal(null)}><section className="dashboard-product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title" onMouseDown={(event) => event.stopPropagation()}><div className="dashboard-modal-heading"><div><p>{productModal === "add" ? "New catalogue item" : "Edit catalogue item"}</p><h2 id="product-modal-title">{productModal === "add" ? "Add product" : "Update product"}</h2></div><button disabled={!!operationLoading} onClick={() => setProductModal(null)} aria-label="Close"><X size={18} /></button></div><label>Product name<input disabled={!!operationLoading} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="e.g. Pearl Drop Earrings" /></label><label>Category<select disabled={!!operationLoading} value={productCategory} onChange={(event) => setProductCategory(event.target.value as StoreItem["category"])}><option>Necklaces</option><option>Earrings</option><option>Rings</option><option>Bracelets</option></select></label><label>Price (GH₵)<input disabled={!!operationLoading} min="0" step="0.01" type="number" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} placeholder="0.00" /></label><div className="dashboard-modal-actions"><button className="dashboard-secondary-button" disabled={!!operationLoading} onClick={() => setProductModal(null)}>Cancel</button><button className="dashboard-primary-button" disabled={!!operationLoading} onClick={saveProduct}>{operationLoading === "add" || operationLoading === "edit" ? <><LoaderCircle className="dashboard-spinner" size={16} /> Saving...</> : productModal === "add" ? "Add product" : "Save changes"}</button></div></section></div>}
+          {operationAlert && <div className="dashboard-modal-backdrop dashboard-alert-backdrop"><section className={`dashboard-operation-alert ${operationAlert.type}`} role="alertdialog" aria-modal="true" aria-labelledby="operation-alert-title"><div className="dashboard-operation-alert-icon">{operationAlert.type === "success" ? <CircleCheck size={30} /> : <CircleAlert size={30} />}</div><p>{operationAlert.type === "success" ? "Success" : "Unable to complete"}</p><h2 id="operation-alert-title">{operationAlert.title}</h2><span>{operationAlert.message}</span><button className="dashboard-primary-button" onClick={() => setOperationAlert(null)}>Continue</button></section></div>}
         </div>
       </section>
     </main>
@@ -179,8 +206,8 @@ function Overview({ items, complaints }: { items: StoreItem[]; complaints: numbe
   </>;
 }
 
-function ProductsView({ items, loading, onRemoved, onEdit }: { items: StoreItem[]; loading: boolean; onRemoved: (id: number) => void; onEdit: (item: StoreItem) => void }) {
-  return <article className="dashboard-panel dashboard-table-panel"><div className="dashboard-table-header"><div><p>Catalogue</p><h2>All products <span>{items.length}</span></h2></div></div>{loading ? <p className="dashboard-empty">Loading products...</p> : items.length ? <div className="dashboard-table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Status</th><th><span className="dashboard-sr-only">Actions</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="dashboard-product-cell"><div className="dashboard-product-thumb"><Sparkles size={16} /></div><strong>{item.name}</strong></div></td><td>{item.category}</td><td>{formatCedis(item.price)}</td><td><span className="dashboard-status">Active</span></td><td><div className="dashboard-row-actions"><button className="dashboard-row-action edit" onClick={() => onEdit(item)}>Edit</button><button className="dashboard-row-action" onClick={() => onRemoved(item.id)}><X size={15} /> Remove</button></div></td></tr>)}</tbody></table></div> : <p className="dashboard-empty">No products match your search.</p>}</article>;
+function ProductsView({ items, loading, operationLoading, onRemoved, onEdit }: { items: StoreItem[]; loading: boolean; operationLoading: string | null; onRemoved: (id: number) => void; onEdit: (item: StoreItem) => void }) {
+  return <article className="dashboard-panel dashboard-table-panel"><div className="dashboard-table-header"><div><p>Catalogue</p><h2>All products <span>{items.length}</span></h2></div></div>{loading ? <p className="dashboard-empty">Loading products...</p> : items.length ? <div className="dashboard-table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Status</th><th><span className="dashboard-sr-only">Actions</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="dashboard-product-cell"><div className="dashboard-product-thumb"><Sparkles size={16} /></div><strong>{item.name}</strong></div></td><td>{item.category}</td><td>{formatCedis(item.price)}</td><td><span className="dashboard-status">Active</span></td><td><div className="dashboard-row-actions"><button className="dashboard-row-action edit" disabled={!!operationLoading} onClick={() => onEdit(item)}>Edit</button><button className="dashboard-row-action" disabled={!!operationLoading} onClick={() => onRemoved(item.id)}>{operationLoading === `remove-${item.id}` ? <><LoaderCircle className="dashboard-spinner" size={14} /> Removing...</> : <><X size={15} /> Remove</>}</button></div></td></tr>)}</tbody></table></div> : <p className="dashboard-empty">No products match your search.</p>}</article>;
 }
 
 function ComplaintsView() {
