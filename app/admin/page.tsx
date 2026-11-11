@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { ArrowLeft, ArrowRight, LockKeyhole, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, LoaderCircle, LockKeyhole, Sparkles } from "lucide-react";
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -33,10 +33,7 @@ export default function AdminLogin() {
       }
 
       setAlert({ type: "success", text: "Login successful. Opening dashboard..." });
-      window.setTimeout(() => {
-        router.push(data.redirectTo || "/admin/dashboard");
-        router.refresh();
-      }, 200);
+      router.push(data.redirectTo || "/admin/dashboard");
     } catch {
       setAlert({ type: "error", text: "Unable to connect to the server." });
       setIsSubmitting(false);
@@ -94,8 +91,8 @@ export default function AdminLogin() {
             type="password"
           />
 
-          <button className="admin-submit" disabled={isSubmitting} type="submit">
-            {isSubmitting ? "Logging in..." : "Log in"} <ArrowRight size={16} />
+          <button aria-busy={isSubmitting} className="admin-submit" disabled={isSubmitting} type="submit">
+            {isSubmitting ? <>Logging in... <LoaderCircle className="dashboard-spinner" size={16} /></> : <>Log in <ArrowRight size={16} /></>}
           </button>
         </form>
 

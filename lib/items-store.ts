@@ -4,7 +4,35 @@ export type StoreItem = {
   category: "Necklaces" | "Earrings" | "Rings" | "Bracelets";
   price: number;
   image: string;
+  images?: string[];
 };
+
+const MAX_PRODUCT_IMAGES = 3;
+const MAX_PRODUCT_IMAGE_LENGTH = 2_800_000;
+const productImagePattern = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+const storedProductImagePattern = /^\/product-images\/[a-f0-9-]{36}\.(?:jpg|png|webp)$/;
+
+export function isValidProductImages(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length <= MAX_PRODUCT_IMAGES
+    && value.every((image) => {
+      if (typeof image !== "string" || image.length > MAX_PRODUCT_IMAGE_LENGTH) return false;
+      if (productImagePattern.test(image)) {
+        const encodedImage = image.slice(image.indexOf(",") + 1);
+        const padding = encodedImage.endsWith("==") ? 2 : encodedImage.endsWith("=") ? 1 : 0;
+        return Math.floor(encodedImage.length * 3 / 4) - padding <= 2 * 1024 * 1024;
+      }
+      return storedProductImagePattern.test(image) || isRemoteImage(image);
+    });
+}
+
+function isRemoteImage(image: string) {
+  try {
+    return ["http:", "https:"].includes(new URL(image).protocol);
+  } catch {
+    return false;
+  }
+}
 
 const initialItems: StoreItem[] = [
   { id: 1, name: "Dainty Pearl Drop", category: "Earrings", price: 420, image: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=900&q=85" },

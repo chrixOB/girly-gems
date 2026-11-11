@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ADMIN_SESSION_COOKIE } from "@/lib/admin-auth";
+import { Badge } from "lucide-react";
 
 export const runtime = "nodejs";
 

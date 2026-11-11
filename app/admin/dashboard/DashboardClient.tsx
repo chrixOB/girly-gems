@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart3,
@@ -9,6 +9,7 @@ import {
   CircleHelp,
   CircleCheck,
   CircleAlert,
+  ImagePlus,
   LoaderCircle,
   LayoutDashboard,
   LogOut,
@@ -29,12 +30,22 @@ type StoreItem = {
   category: "Necklaces" | "Earrings" | "Rings" | "Bracelets";
   price: number;
   image: string;
+  images?: string[];
 };
 
 type DashboardView = "Overview" | "Products" | "Complaints" | "Customers";
 
 function formatCedis(price: number) {
   return new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS", minimumFractionDigits: 2 }).format(price);
+}
+
+function readImage(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Unable to read image."));
+    reader.onerror = () => reject(new Error("Unable to read image."));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function DashboardClient() {
@@ -50,6 +61,9 @@ export default function DashboardClient() {
   const [productName, setProductName] = useState("");
   const [productCategory, setProductCategory] = useState<StoreItem["category"]>("Necklaces");
   const [productPrice, setProductPrice] = useState("");
+  const [productImages, setProductImages] = useState<string[]>([]);
+  const [imageError, setImageError] = useState("");
+  const [imageLoading, setImageLoading] = useState(false);
   const [operationLoading, setOperationLoading] = useState<string | null>(null);
   const [operationAlert, setOperationAlert] = useState<{ type: "success" | "error"; title: string; message: string } | null>(null);
 
@@ -96,6 +110,8 @@ export default function DashboardClient() {
     setProductName("");
     setProductCategory("Necklaces");
     setProductPrice("");
+    setProductImages([]);
+    setImageError("");
     setProductModal("add");
   }
 
@@ -104,7 +120,40 @@ export default function DashboardClient() {
     setProductName(item.name);
     setProductCategory(item.category);
     setProductPrice(String(item.price));
+    setProductImages((item.images?.length ? item.images : item.image ? [item.image] : []).slice(0, 3));
+    setImageError("");
     setProductModal("edit");
+  }
+
+  async function addProductImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files || []);
+    event.currentTarget.value = "";
+    if (!files.length) return;
+
+    const availableSlots = 3 - productImages.length;
+    if (files.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type))) {
+      setImageError("Use JPEG, PNG, or WebP images.");
+      return;
+    }
+    if (files.some((file) => file.size > 2 * 1024 * 1024)) {
+      setImageError("Each image must be 2 MB or smaller.");
+      return;
+    }
+    if (availableSlots <= 0) {
+      setImageError("A product can have up to 3 pictures.");
+      return;
+    }
+
+    setImageLoading(true);
+    try {
+      const selectedImages = await Promise.all(files.slice(0, availableSlots).map(readImage));
+      setProductImages((current) => [...current, ...selectedImages].slice(0, 3));
+      setImageError(files.length > availableSlots ? "Only 3 pictures can be added per product." : "");
+    } catch {
+      setImageError("Unable to read one of those images. Please try again.");
+    } finally {
+      setImageLoading(false);
+    }
   }
 
   async function saveProduct() {
@@ -116,7 +165,7 @@ export default function DashboardClient() {
 
     setOperationLoading(productModal === "edit" ? "edit" : "add");
     try {
-      const payload = { name: productName.trim(), category: productCategory, price, image: editingItem?.image || "" };
+      const payload = { name: productName.trim(), category: productCategory, price, image: productImages[0] || "", images: productImages };
       const response = productModal === "edit"
         ? await fetch(`/api/items/${editingItem?.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
         : await fetch("/api/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -183,7 +232,35 @@ export default function DashboardClient() {
           {activeView === "Products" && <ProductsView items={visibleItems} loading={loading} operationLoading={operationLoading} onRemoved={removeItem} onEdit={openEditProduct} />}
           {activeView === "Complaints" && <ComplaintsView />}
           {activeView === "Customers" && <CustomersView />}
-          {productModal && <div className="dashboard-modal-backdrop" onMouseDown={() => !operationLoading && setProductModal(null)}><section className="dashboard-product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title" onMouseDown={(event) => event.stopPropagation()}><div className="dashboard-modal-heading"><div><p>{productModal === "add" ? "New catalogue item" : "Edit catalogue item"}</p><h2 id="product-modal-title">{productModal === "add" ? "Add product" : "Update product"}</h2></div><button disabled={!!operationLoading} onClick={() => setProductModal(null)} aria-label="Close"><X size={18} /></button></div><label>Product name<input disabled={!!operationLoading} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="e.g. Pearl Drop Earrings" /></label><label>Category<select disabled={!!operationLoading} value={productCategory} onChange={(event) => setProductCategory(event.target.value as StoreItem["category"])}><option>Necklaces</option><option>Earrings</option><option>Rings</option><option>Bracelets</option></select></label><label>Price (GH₵)<input disabled={!!operationLoading} min="0" step="0.01" type="number" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} placeholder="0.00" /></label><div className="dashboard-modal-actions"><button className="dashboard-secondary-button" disabled={!!operationLoading} onClick={() => setProductModal(null)}>Cancel</button><button className="dashboard-primary-button" disabled={!!operationLoading} onClick={saveProduct}>{operationLoading === "add" || operationLoading === "edit" ? <><LoaderCircle className="dashboard-spinner" size={16} /> Saving...</> : productModal === "add" ? "Add product" : "Save changes"}</button></div></section></div>}
+          {productModal && (
+            <div className="dashboard-modal-backdrop" onMouseDown={() => !operationLoading && !imageLoading && setProductModal(null)}>
+              <section className="dashboard-product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+                <div className="dashboard-modal-heading">
+                  <div><p>{productModal === "add" ? "New catalogue item" : "Edit catalogue item"}</p><h2 id="product-modal-title">{productModal === "add" ? "Add product" : "Update product"}</h2></div>
+                  <button disabled={!!operationLoading || imageLoading} onClick={() => setProductModal(null)} aria-label="Close"><X size={18} /></button>
+                </div>
+                <label>Product name<input disabled={!!operationLoading} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="e.g. Pearl Drop Earrings" /></label>
+                <label>Category<select disabled={!!operationLoading} value={productCategory} onChange={(event) => setProductCategory(event.target.value as StoreItem["category"])}><option>Necklaces</option><option>Earrings</option><option>Rings</option><option>Bracelets</option></select></label>
+                <label>Price (GH₵)<input disabled={!!operationLoading} min="0" step="0.01" type="number" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} placeholder="0.00" /></label>
+                <div className="dashboard-image-field">
+                  <div className="dashboard-image-heading"><span>Product pictures</span><span>{productImages.length}/3</span></div>
+                  <div className="dashboard-image-grid">
+                    {[0, 1, 2].map((slot) => <div className={`dashboard-image-slot ${productImages[slot] ? "" : "dashboard-image-empty"}`} key={slot}>
+                      {productImages[slot] && <>
+                        <img src={productImages[slot]} alt={`Product picture ${slot + 1}`} />
+                        <button className="dashboard-image-remove" type="button" disabled={!!operationLoading || imageLoading} onClick={() => { setProductImages((current) => current.filter((_, index) => index !== slot)); setImageError(""); }} aria-label={`Remove picture ${slot + 1}`}><X size={14} /></button>
+                      </>}
+                      {!productImages[slot] && <><ImagePlus size={19} /><span>Picture {slot + 1}</span></>}
+                    </div>)}
+                  </div>
+                  {productImages.length < 3 && <label className="dashboard-image-add"><input accept="image/jpeg,image/png,image/webp" disabled={!!operationLoading || imageLoading} multiple type="file" onChange={addProductImages} /><ImagePlus size={15} />{imageLoading ? "Loading pictures..." : "Add pictures"}</label>}
+                  <p className="dashboard-image-hint">JPEG, PNG, or WebP. Up to 2 MB per picture.</p>
+                  {imageError && <p className="dashboard-image-error" role="alert">{imageError}</p>}
+                </div>
+                <div className="dashboard-modal-actions"><button className="dashboard-secondary-button" disabled={!!operationLoading || imageLoading} onClick={() => setProductModal(null)}>Cancel</button><button className="dashboard-primary-button" disabled={!!operationLoading || imageLoading} onClick={saveProduct}>{operationLoading === "add" || operationLoading === "edit" ? <><LoaderCircle className="dashboard-spinner" size={16} /> Saving...</> : productModal === "add" ? "Add product" : "Save changes"}</button></div>
+              </section>
+            </div>
+          )}
           {operationAlert && <div className="dashboard-modal-backdrop dashboard-alert-backdrop"><section className={`dashboard-operation-alert ${operationAlert.type}`} role="alertdialog" aria-modal="true" aria-labelledby="operation-alert-title"><div className="dashboard-operation-alert-icon">{operationAlert.type === "success" ? <CircleCheck size={30} /> : <CircleAlert size={30} />}</div><p>{operationAlert.type === "success" ? "Success" : "Unable to complete"}</p><h2 id="operation-alert-title">{operationAlert.title}</h2><span>{operationAlert.message}</span><button className="dashboard-primary-button" onClick={() => setOperationAlert(null)}>Continue</button></section></div>}
         </div>
       </section>
@@ -207,7 +284,7 @@ function Overview({ items, complaints }: { items: StoreItem[]; complaints: numbe
 }
 
 function ProductsView({ items, loading, operationLoading, onRemoved, onEdit }: { items: StoreItem[]; loading: boolean; operationLoading: string | null; onRemoved: (id: number) => void; onEdit: (item: StoreItem) => void }) {
-  return <article className="dashboard-panel dashboard-table-panel"><div className="dashboard-table-header"><div><p>Catalogue</p><h2>All products <span>{items.length}</span></h2></div></div>{loading ? <p className="dashboard-empty">Loading products...</p> : items.length ? <div className="dashboard-table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Status</th><th><span className="dashboard-sr-only">Actions</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="dashboard-product-cell"><div className="dashboard-product-thumb"><Sparkles size={16} /></div><strong>{item.name}</strong></div></td><td>{item.category}</td><td>{formatCedis(item.price)}</td><td><span className="dashboard-status">Active</span></td><td><div className="dashboard-row-actions"><button className="dashboard-row-action edit" disabled={!!operationLoading} onClick={() => onEdit(item)}>Edit</button><button className="dashboard-row-action" disabled={!!operationLoading} onClick={() => onRemoved(item.id)}>{operationLoading === `remove-${item.id}` ? <><LoaderCircle className="dashboard-spinner" size={14} /> Removing...</> : <><X size={15} /> Remove</>}</button></div></td></tr>)}</tbody></table></div> : <p className="dashboard-empty">No products match your search.</p>}</article>;
+  return <article className="dashboard-panel dashboard-table-panel"><div className="dashboard-table-header"><div><p>Catalogue</p><h2>All products <span>{items.length}</span></h2></div></div>{loading ? <p className="dashboard-empty">Loading products...</p> : items.length ? <div className="dashboard-table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Status</th><th><span className="dashboard-sr-only">Actions</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="dashboard-product-cell"><div className="dashboard-product-thumb">{item.images?.[0] || item.image ? <img src={item.images?.[0] || item.image} alt="" /> : <Sparkles size={16} />}</div><strong>{item.name}</strong></div></td><td>{item.category}</td><td>{formatCedis(item.price)}</td><td><span className="dashboard-status">Active</span></td><td><div className="dashboard-row-actions"><button className="dashboard-row-action edit" disabled={!!operationLoading} onClick={() => onEdit(item)}>Edit</button><button className="dashboard-row-action" disabled={!!operationLoading} onClick={() => onRemoved(item.id)}>{operationLoading === `remove-${item.id}` ? <><LoaderCircle className="dashboard-spinner" size={14} /> Removing...</> : <><X size={15} /> Remove</>}</button></div></td></tr>)}</tbody></table></div> : <p className="dashboard-empty">No products match your search.</p>}</article>;
 }
 
 function ComplaintsView() {
