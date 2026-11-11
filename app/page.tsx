@@ -5,6 +5,8 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Heart,
   Menu,
   Minus,
@@ -24,6 +26,7 @@ type Product = {
   category: Exclude<Category, "All pieces">;
   price: number;
   image: string;
+  images?: string[];
   tone: string;
   badge?: string;
 };
@@ -50,6 +53,7 @@ export default function Home() {
   const [cartOpen, setCartOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productImageIndexes, setProductImageIndexes] = useState<Record<number, number>>({});
 
   useEffect(() => {
     async function loadProducts() {
@@ -167,10 +171,27 @@ export default function Home() {
       <section className="product-section">
         <div className="section-heading"><p>{filteredProducts.length} pieces to love</p><button className="sort-button">Sort by <strong>Featured</strong> <ChevronDown size={15} /></button></div>
         <div className="product-grid">
-          {filteredProducts.map((product) => <article className="product-card" key={product.id}>
-            <div className={`product-image ${product.tone}`}><img src={product.image || "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=900&q=85"} alt={product.name} /><button className={`favorite-button ${favorites.includes(product.id) ? "is-favorite" : ""}`} aria-label={`Favorite ${product.name}`} onClick={() => toggleFavorite(product.id)}><Heart size={18} fill={favorites.includes(product.id) ? "currentColor" : "none"} /></button>{product.badge && <span className="product-badge">{product.badge}</span>}<button className="quick-add" onClick={() => addToCart(product.id)}>Add to bag <Plus size={16} /></button></div>
+          {filteredProducts.map((product) => {
+            const productImages = product.images?.length ? product.images : [product.image || "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=900&q=85"];
+            const activeImageIndex = Math.min(productImageIndexes[product.id] || 0, productImages.length - 1);
+
+            return <article className="product-card" key={product.id}>
+            <div className={`product-image ${product.tone}`}>
+              <img src={productImages[activeImageIndex]} alt={`${product.name}${productImages.length > 1 ? `, picture ${activeImageIndex + 1} of ${productImages.length}` : ""}`} />
+              <button className={`favorite-button ${favorites.includes(product.id) ? "is-favorite" : ""}`} aria-label={`Favorite ${product.name}`} onClick={() => toggleFavorite(product.id)}><Heart size={18} fill={favorites.includes(product.id) ? "currentColor" : "none"} /></button>
+              {product.badge && <span className="product-badge">{product.badge}</span>}
+              {productImages.length > 1 && <>
+                <button className="product-carousel-arrow previous" type="button" aria-label={`Previous picture of ${product.name}`} onClick={() => setProductImageIndexes((current) => ({ ...current, [product.id]: (activeImageIndex - 1 + productImages.length) % productImages.length }))}><ChevronLeft size={17} /></button>
+                <button className="product-carousel-arrow next" type="button" aria-label={`Next picture of ${product.name}`} onClick={() => setProductImageIndexes((current) => ({ ...current, [product.id]: (activeImageIndex + 1) % productImages.length }))}><ChevronRight size={17} /></button>
+                <div className="product-carousel-dots" role="group" aria-label={`${product.name} pictures`}>
+                  {productImages.map((_, index) => <button key={index} className={index === activeImageIndex ? "active" : ""} type="button" aria-label={`View picture ${index + 1} of ${product.name}`} aria-pressed={index === activeImageIndex} onClick={() => setProductImageIndexes((current) => ({ ...current, [product.id]: index }))}><span /></button>)}
+                </div>
+              </>}
+              <button className="quick-add" onClick={() => addToCart(product.id)}>Add to bag <Plus size={16} /></button>
+            </div>
             <div className="product-info"><div><h3>{product.name}</h3><p>{product.category}</p></div><strong>{formatPrice(product.price)}</strong></div>
-          </article>)}
+          </article>;
+          })}
         </div>
         {filteredProducts.length === 0 && <div className="empty-results"><Sparkles size={24} /><p>No gems found. Try another little search.</p></div>}
       </section>
